@@ -8,6 +8,13 @@
       "when": 1792925993862,
       "tag": "0000_aira_flora_schema",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1792926140291,
+      "tag": "0001_aira_flora_rpc_functions",
+      "breakpoints": true
     }
   ]
 }

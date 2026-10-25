@@ -118,7 +118,7 @@ export const adminOverview = createServerFn({ method: "POST" })
       monthly,
       weekly,
       byCategory,
-      pendingCount: statusCounts.pending,
+      pendingCount: statusCounts["pending"] ?? 0,
     };
   });
 

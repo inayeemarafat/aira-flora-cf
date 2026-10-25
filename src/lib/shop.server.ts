@@ -13,7 +13,7 @@ export const listProducts = createServerFn({ method: "GET" }).handler(
       .select("*")
       .order("created_at", { ascending: true });
     if (error) throw new Error(error.message);
-    return (data ?? []) as Product[];
+    return (data ?? []) as unknown as Product[];
   },
 );
 
@@ -37,20 +37,20 @@ export const getProductBySlug = createServerFn({ method: "GET" })
       supabase
         .from("product_reviews")
         .select("*")
-        .eq("product_id", (product as Product).id)
+        .eq("product_id", (product as unknown as Product).id)
         .order("created_at", { ascending: false }),
       supabase
         .from("products")
         .select("*")
-        .eq("category", (product as Product).category)
-        .neq("id", (product as Product).id)
+        .eq("category", (product as unknown as Product).category)
+        .neq("id", (product as unknown as Product).id)
         .limit(4),
     ]);
 
     return {
-      product: product as Product,
-      reviews: (reviewsRes.data ?? []) as ProductReview[],
-      related: (relatedRes.data ?? []) as Product[],
+      product: product as unknown as Product,
+      reviews: (reviewsRes.data ?? []) as unknown as ProductReview[],
+      related: (relatedRes.data ?? []) as unknown as Product[],
     };
   });
 
@@ -213,19 +213,8 @@ export const createOrder = createServerFn({ method: "POST" })
     }
 
     if (couponCode) {
-      await admin.rpc("increment_coupon_usage", { code: couponCode }).then(
-        (res) => {
-          if (res.error?.message.includes("not found")) {
-            // Fallback: direct update when the RPC does not exist yet
-            return admin
-              .from("coupons")
-              .update({ used_count: 1 })
-              .eq("code", couponCode)
-              .then(() => undefined);
-          }
-          return undefined;
-        },
-      );
+      const res = await admin.rpc("increment_coupon_usage", { _code: couponCode });
+      if (res.error) throw new Error(res.error.message);
     }
 
     return { orderId: order.order_id, total, mobile };
