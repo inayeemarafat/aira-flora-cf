@@ -17,6 +17,19 @@ export const listProducts = createServerFn({ method: "GET" }).handler(
   },
 );
 
+export const listLatestReviews = createServerFn({ method: "GET" }).handler(
+  async (): Promise<ProductReview[]> => {
+    const supabase = createPublicSupabase();
+    const { data, error } = await supabase
+      .from("product_reviews")
+      .select("*")
+      .order("created_at", { ascending: false })
+      .limit(6);
+    if (error) throw new Error(error.message);
+    return (data ?? []) as unknown as ProductReview[];
+  },
+);
+
 export const getProductBySlug = createServerFn({ method: "GET" })
   .inputValidator((input: { slug: string }) => input)
   .handler(async ({ data }): Promise<{
