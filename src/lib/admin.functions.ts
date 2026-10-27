@@ -1,4 +1,5 @@
 import { createServerFn } from "@tanstack/react-start";
+import { createHash, timingSafeEqual } from "node:crypto";
 import type { Coupon, Order, OrderItem, Product } from "./types";
 import { createPublicSupabase, getAdmin } from "./supabase-public";
 
@@ -6,7 +7,13 @@ import { createPublicSupabase, getAdmin } from "./supabase-public";
 
 function assertAdmin(password: unknown): void {
   const expected = process.env["ADMIN_PASSWORD"];
-  if (!expected || typeof password !== "string" || password !== expected) {
+  if (!expected || typeof password !== "string") {
+    throw new Error("Unauthorized. Please sign in again.");
+  }
+  // Hash both sides to equal-length digests before timingSafeEqual.
+  const a = createHash("sha256").update(password, "utf8").digest();
+  const b = createHash("sha256").update(expected, "utf8").digest();
+  if (!timingSafeEqual(a, b)) {
     throw new Error("Unauthorized. Please sign in again.");
   }
 }
