@@ -10,14 +10,23 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as SiteRouteImport } from './routes/_site'
+import { Route as AdminRouteImport } from './routes/admin'
 import { Route as SiteIndexRouteImport } from './routes/_site.index'
 import { Route as SiteCheckoutRouteImport } from './routes/_site.checkout'
 import { Route as SiteShopRouteImport } from './routes/_site.shop'
 import { Route as SiteTrackRouteImport } from './routes/_site.track'
+import { Route as AdminIndexRouteImport } from './routes/admin.index'
+import { Route as AdminOrdersRouteImport } from './routes/admin.orders'
+import { Route as AdminProductsRouteImport } from './routes/admin.products'
 import { Route as SiteProductsSlugRouteImport } from './routes/_site.products.$slug'
 
 const SiteRoute = SiteRouteImport.update({
   id: '/_site',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AdminRoute = AdminRouteImport.update({
+  id: '/admin',
+  path: '/admin',
   getParentRoute: () => rootRouteImport,
 } as any)
 const SiteIndexRoute = SiteIndexRouteImport.update({
@@ -40,6 +49,21 @@ const SiteTrackRoute = SiteTrackRouteImport.update({
   path: '/track',
   getParentRoute: () => SiteRoute,
 } as any)
+const AdminIndexRoute = AdminIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => AdminRoute,
+} as any)
+const AdminOrdersRoute = AdminOrdersRouteImport.update({
+  id: '/orders',
+  path: '/orders',
+  getParentRoute: () => AdminRoute,
+} as any)
+const AdminProductsRoute = AdminProductsRouteImport.update({
+  id: '/products',
+  path: '/products',
+  getParentRoute: () => AdminRoute,
+} as any)
 const SiteProductsSlugRoute = SiteProductsSlugRouteImport.update({
   id: '/products/$slug',
   path: '/products/$slug',
@@ -48,44 +72,77 @@ const SiteProductsSlugRoute = SiteProductsSlugRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof SiteIndexRoute
+  '/admin': typeof AdminRouteWithChildren
   '/checkout': typeof SiteCheckoutRoute
   '/shop': typeof SiteShopRoute
   '/track': typeof SiteTrackRoute
+  '/admin/orders': typeof AdminOrdersRoute
+  '/admin/products': typeof AdminProductsRoute
+  '/admin/': typeof AdminIndexRoute
   '/products/$slug': typeof SiteProductsSlugRoute
 }
 export interface FileRoutesByTo {
   '/checkout': typeof SiteCheckoutRoute
   '/shop': typeof SiteShopRoute
   '/track': typeof SiteTrackRoute
+  '/admin/orders': typeof AdminOrdersRoute
+  '/admin/products': typeof AdminProductsRoute
   '/': typeof SiteIndexRoute
+  '/admin': typeof AdminIndexRoute
   '/products/$slug': typeof SiteProductsSlugRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/_site': typeof SiteRouteWithChildren
+  '/admin': typeof AdminRouteWithChildren
   '/_site/checkout': typeof SiteCheckoutRoute
   '/_site/shop': typeof SiteShopRoute
   '/_site/track': typeof SiteTrackRoute
+  '/admin/orders': typeof AdminOrdersRoute
+  '/admin/products': typeof AdminProductsRoute
   '/_site/': typeof SiteIndexRoute
+  '/admin/': typeof AdminIndexRoute
   '/_site/products/$slug': typeof SiteProductsSlugRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/checkout' | '/shop' | '/track' | '/products/$slug'
+  fullPaths:
+    | '/'
+    | '/admin'
+    | '/checkout'
+    | '/shop'
+    | '/track'
+    | '/admin/orders'
+    | '/admin/products'
+    | '/admin/'
+    | '/products/$slug'
   fileRoutesByTo: FileRoutesByTo
-  to: '/checkout' | '/shop' | '/track' | '/' | '/products/$slug'
+  to:
+    | '/checkout'
+    | '/shop'
+    | '/track'
+    | '/admin/orders'
+    | '/admin/products'
+    | '/'
+    | '/admin'
+    | '/products/$slug'
   id:
     | '__root__'
     | '/_site'
+    | '/admin'
     | '/_site/checkout'
     | '/_site/shop'
     | '/_site/track'
+    | '/admin/orders'
+    | '/admin/products'
     | '/_site/'
+    | '/admin/'
     | '/_site/products/$slug'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   SiteRoute: typeof SiteRouteWithChildren
+  AdminRoute: typeof AdminRouteWithChildren
 }
 
 declare module '@tanstack/react-router' {
@@ -95,6 +152,13 @@ declare module '@tanstack/react-router' {
       path: ''
       fullPath: '/'
       preLoaderRoute: typeof SiteRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/admin': {
+      id: '/admin'
+      path: '/admin'
+      fullPath: '/admin'
+      preLoaderRoute: typeof AdminRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/_site/': {
@@ -125,6 +189,27 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SiteTrackRouteImport
       parentRoute: typeof SiteRoute
     }
+    '/admin/': {
+      id: '/admin/'
+      path: '/'
+      fullPath: '/admin/'
+      preLoaderRoute: typeof AdminIndexRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    '/admin/orders': {
+      id: '/admin/orders'
+      path: '/orders'
+      fullPath: '/admin/orders'
+      preLoaderRoute: typeof AdminOrdersRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    '/admin/products': {
+      id: '/admin/products'
+      path: '/products'
+      fullPath: '/admin/products'
+      preLoaderRoute: typeof AdminProductsRouteImport
+      parentRoute: typeof AdminRoute
+    }
     '/_site/products/$slug': {
       id: '/_site/products/$slug'
       path: '/products/$slug'
@@ -153,8 +238,23 @@ const SiteRouteChildren: SiteRouteChildren = {
 
 const SiteRouteWithChildren = SiteRoute._addFileChildren(SiteRouteChildren)
 
+interface AdminRouteChildren {
+  AdminOrdersRoute: typeof AdminOrdersRoute
+  AdminProductsRoute: typeof AdminProductsRoute
+  AdminIndexRoute: typeof AdminIndexRoute
+}
+
+const AdminRouteChildren: AdminRouteChildren = {
+  AdminOrdersRoute: AdminOrdersRoute,
+  AdminProductsRoute: AdminProductsRoute,
+  AdminIndexRoute: AdminIndexRoute,
+}
+
+const AdminRouteWithChildren = AdminRoute._addFileChildren(AdminRouteChildren)
+
 const rootRouteChildren: RootRouteChildren = {
   SiteRoute: SiteRouteWithChildren,
+  AdminRoute: AdminRouteWithChildren,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

@@ -229,6 +229,19 @@ export const adminSaveProduct = createServerFn({ method: "POST" })
     return { ok: true };
   });
 
+export const adminProductsList = createServerFn({ method: "POST" })
+  .inputValidator(P)
+  .handler(async ({ data }): Promise<Product[]> => {
+    assertAdmin(data.adminPassword);
+    const admin = await getAdmin();
+    const { data: products, error } = await admin
+      .from("products")
+      .select("*")
+      .order("created_at", { ascending: true });
+    if (error) throw new Error(error.message);
+    return (products ?? []) as unknown as Product[];
+  });
+
 export const adminDeleteProduct = createServerFn({ method: "POST" })
   .inputValidator((input: { adminPassword: string; id: string }) => input)
   .handler(async ({ data }) => {
