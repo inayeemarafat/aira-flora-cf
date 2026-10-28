@@ -9,50 +9,152 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
-import { Route as IndexRouteImport } from './routes/index'
+import { Route as SiteRouteImport } from './routes/_site'
+import { Route as SiteIndexRouteImport } from './routes/_site.index'
+import { Route as SiteCheckoutRouteImport } from './routes/_site.checkout'
+import { Route as SiteShopRouteImport } from './routes/_site.shop'
+import { Route as SiteTrackRouteImport } from './routes/_site.track'
+import { Route as SiteProductsSlugRouteImport } from './routes/_site.products.$slug'
 
-const IndexRoute = IndexRouteImport.update({
+const SiteRoute = SiteRouteImport.update({
+  id: '/_site',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SiteIndexRoute = SiteIndexRouteImport.update({
   id: '/',
   path: '/',
-  getParentRoute: () => rootRouteImport,
+  getParentRoute: () => SiteRoute,
+} as any)
+const SiteCheckoutRoute = SiteCheckoutRouteImport.update({
+  id: '/checkout',
+  path: '/checkout',
+  getParentRoute: () => SiteRoute,
+} as any)
+const SiteShopRoute = SiteShopRouteImport.update({
+  id: '/shop',
+  path: '/shop',
+  getParentRoute: () => SiteRoute,
+} as any)
+const SiteTrackRoute = SiteTrackRouteImport.update({
+  id: '/track',
+  path: '/track',
+  getParentRoute: () => SiteRoute,
+} as any)
+const SiteProductsSlugRoute = SiteProductsSlugRouteImport.update({
+  id: '/products/$slug',
+  path: '/products/$slug',
+  getParentRoute: () => SiteRoute,
 } as any)
 
 export interface FileRoutesByFullPath {
-  '/': typeof IndexRoute
+  '/': typeof SiteIndexRoute
+  '/checkout': typeof SiteCheckoutRoute
+  '/shop': typeof SiteShopRoute
+  '/track': typeof SiteTrackRoute
+  '/products/$slug': typeof SiteProductsSlugRoute
 }
 export interface FileRoutesByTo {
-  '/': typeof IndexRoute
+  '/checkout': typeof SiteCheckoutRoute
+  '/shop': typeof SiteShopRoute
+  '/track': typeof SiteTrackRoute
+  '/': typeof SiteIndexRoute
+  '/products/$slug': typeof SiteProductsSlugRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
-  '/': typeof IndexRoute
+  '/_site': typeof SiteRouteWithChildren
+  '/_site/checkout': typeof SiteCheckoutRoute
+  '/_site/shop': typeof SiteShopRoute
+  '/_site/track': typeof SiteTrackRoute
+  '/_site/': typeof SiteIndexRoute
+  '/_site/products/$slug': typeof SiteProductsSlugRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/'
+  fullPaths: '/' | '/checkout' | '/shop' | '/track' | '/products/$slug'
   fileRoutesByTo: FileRoutesByTo
-  to: '/'
-  id: '__root__' | '/'
+  to: '/checkout' | '/shop' | '/track' | '/' | '/products/$slug'
+  id:
+    | '__root__'
+    | '/_site'
+    | '/_site/checkout'
+    | '/_site/shop'
+    | '/_site/track'
+    | '/_site/'
+    | '/_site/products/$slug'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
-  IndexRoute: typeof IndexRoute
+  SiteRoute: typeof SiteRouteWithChildren
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
-    '/': {
-      id: '/'
+    '/_site': {
+      id: '/_site'
+      path: ''
+      fullPath: '/'
+      preLoaderRoute: typeof SiteRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/_site/': {
+      id: '/_site/'
       path: '/'
       fullPath: '/'
-      preLoaderRoute: typeof IndexRouteImport
-      parentRoute: typeof rootRouteImport
+      preLoaderRoute: typeof SiteIndexRouteImport
+      parentRoute: typeof SiteRoute
+    }
+    '/_site/checkout': {
+      id: '/_site/checkout'
+      path: '/checkout'
+      fullPath: '/checkout'
+      preLoaderRoute: typeof SiteCheckoutRouteImport
+      parentRoute: typeof SiteRoute
+    }
+    '/_site/shop': {
+      id: '/_site/shop'
+      path: '/shop'
+      fullPath: '/shop'
+      preLoaderRoute: typeof SiteShopRouteImport
+      parentRoute: typeof SiteRoute
+    }
+    '/_site/track': {
+      id: '/_site/track'
+      path: '/track'
+      fullPath: '/track'
+      preLoaderRoute: typeof SiteTrackRouteImport
+      parentRoute: typeof SiteRoute
+    }
+    '/_site/products/$slug': {
+      id: '/_site/products/$slug'
+      path: '/products/$slug'
+      fullPath: '/products/$slug'
+      preLoaderRoute: typeof SiteProductsSlugRouteImport
+      parentRoute: typeof SiteRoute
     }
   }
 }
 
+interface SiteRouteChildren {
+  SiteCheckoutRoute: typeof SiteCheckoutRoute
+  SiteShopRoute: typeof SiteShopRoute
+  SiteTrackRoute: typeof SiteTrackRoute
+  SiteIndexRoute: typeof SiteIndexRoute
+  SiteProductsSlugRoute: typeof SiteProductsSlugRoute
+}
+
+const SiteRouteChildren: SiteRouteChildren = {
+  SiteCheckoutRoute: SiteCheckoutRoute,
+  SiteShopRoute: SiteShopRoute,
+  SiteTrackRoute: SiteTrackRoute,
+  SiteIndexRoute: SiteIndexRoute,
+  SiteProductsSlugRoute: SiteProductsSlugRoute,
+}
+
+const SiteRouteWithChildren = SiteRoute._addFileChildren(SiteRouteChildren)
+
 const rootRouteChildren: RootRouteChildren = {
-  IndexRoute: IndexRoute,
+  SiteRoute: SiteRouteWithChildren,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
