@@ -16,6 +16,8 @@ import { Route as SiteCheckoutRouteImport } from './routes/_site.checkout'
 import { Route as SiteShopRouteImport } from './routes/_site.shop'
 import { Route as SiteTrackRouteImport } from './routes/_site.track'
 import { Route as AdminIndexRouteImport } from './routes/admin.index'
+import { Route as AdminCouponsRouteImport } from './routes/admin.coupons'
+import { Route as AdminCustomersRouteImport } from './routes/admin.customers'
 import { Route as AdminOrdersRouteImport } from './routes/admin.orders'
 import { Route as AdminProductsRouteImport } from './routes/admin.products'
 import { Route as SiteProductsSlugRouteImport } from './routes/_site.products.$slug'
@@ -54,6 +56,16 @@ const AdminIndexRoute = AdminIndexRouteImport.update({
   path: '/',
   getParentRoute: () => AdminRoute,
 } as any)
+const AdminCouponsRoute = AdminCouponsRouteImport.update({
+  id: '/coupons',
+  path: '/coupons',
+  getParentRoute: () => AdminRoute,
+} as any)
+const AdminCustomersRoute = AdminCustomersRouteImport.update({
+  id: '/customers',
+  path: '/customers',
+  getParentRoute: () => AdminRoute,
+} as any)
 const AdminOrdersRoute = AdminOrdersRouteImport.update({
   id: '/orders',
   path: '/orders',
@@ -76,6 +88,8 @@ export interface FileRoutesByFullPath {
   '/checkout': typeof SiteCheckoutRoute
   '/shop': typeof SiteShopRoute
   '/track': typeof SiteTrackRoute
+  '/admin/coupons': typeof AdminCouponsRoute
+  '/admin/customers': typeof AdminCustomersRoute
   '/admin/orders': typeof AdminOrdersRoute
   '/admin/products': typeof AdminProductsRoute
   '/admin/': typeof AdminIndexRoute
@@ -85,6 +99,8 @@ export interface FileRoutesByTo {
   '/checkout': typeof SiteCheckoutRoute
   '/shop': typeof SiteShopRoute
   '/track': typeof SiteTrackRoute
+  '/admin/coupons': typeof AdminCouponsRoute
+  '/admin/customers': typeof AdminCustomersRoute
   '/admin/orders': typeof AdminOrdersRoute
   '/admin/products': typeof AdminProductsRoute
   '/': typeof SiteIndexRoute
@@ -98,6 +114,8 @@ export interface FileRoutesById {
   '/_site/checkout': typeof SiteCheckoutRoute
   '/_site/shop': typeof SiteShopRoute
   '/_site/track': typeof SiteTrackRoute
+  '/admin/coupons': typeof AdminCouponsRoute
+  '/admin/customers': typeof AdminCustomersRoute
   '/admin/orders': typeof AdminOrdersRoute
   '/admin/products': typeof AdminProductsRoute
   '/_site/': typeof SiteIndexRoute
@@ -112,6 +130,8 @@ export interface FileRouteTypes {
     | '/checkout'
     | '/shop'
     | '/track'
+    | '/admin/coupons'
+    | '/admin/customers'
     | '/admin/orders'
     | '/admin/products'
     | '/admin/'
@@ -121,6 +141,8 @@ export interface FileRouteTypes {
     | '/checkout'
     | '/shop'
     | '/track'
+    | '/admin/coupons'
+    | '/admin/customers'
     | '/admin/orders'
     | '/admin/products'
     | '/'
@@ -133,6 +155,8 @@ export interface FileRouteTypes {
     | '/_site/checkout'
     | '/_site/shop'
     | '/_site/track'
+    | '/admin/coupons'
+    | '/admin/customers'
     | '/admin/orders'
     | '/admin/products'
     | '/_site/'
@@ -196,6 +220,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminIndexRouteImport
       parentRoute: typeof AdminRoute
     }
+    '/admin/coupons': {
+      id: '/admin/coupons'
+      path: '/coupons'
+      fullPath: '/admin/coupons'
+      preLoaderRoute: typeof AdminCouponsRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    '/admin/customers': {
+      id: '/admin/customers'
+      path: '/customers'
+      fullPath: '/admin/customers'
+      preLoaderRoute: typeof AdminCustomersRouteImport
+      parentRoute: typeof AdminRoute
+    }
     '/admin/orders': {
       id: '/admin/orders'
       path: '/orders'
@@ -239,12 +277,16 @@ const SiteRouteChildren: SiteRouteChildren = {
 const SiteRouteWithChildren = SiteRoute._addFileChildren(SiteRouteChildren)
 
 interface AdminRouteChildren {
+  AdminCouponsRoute: typeof AdminCouponsRoute
+  AdminCustomersRoute: typeof AdminCustomersRoute
   AdminOrdersRoute: typeof AdminOrdersRoute
   AdminProductsRoute: typeof AdminProductsRoute
   AdminIndexRoute: typeof AdminIndexRoute
 }
 
 const AdminRouteChildren: AdminRouteChildren = {
+  AdminCouponsRoute: AdminCouponsRoute,
+  AdminCustomersRoute: AdminCustomersRoute,
   AdminOrdersRoute: AdminOrdersRoute,
   AdminProductsRoute: AdminProductsRoute,
   AdminIndexRoute: AdminIndexRoute,
