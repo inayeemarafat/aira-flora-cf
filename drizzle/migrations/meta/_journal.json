@@ -15,6 +15,13 @@
       "when": 1792926140291,
       "tag": "0001_aira_flora_rpc_functions",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1793163087018,
+      "tag": "0002_coupons_validated_by_secure_function_newsletter_sign_up_rule_closed",
+      "breakpoints": true
     }
   ]
 }

@@ -305,6 +305,14 @@ export type Database = {
     Functions: {
       increment_coupon_usage: { Args: { _code: string }; Returns: undefined }
       increment_visits: { Args: never; Returns: undefined }
+      validate_coupon: {
+        Args: { _code: string; _subtotal: number }
+        Returns: {
+          discount: number
+          message: string
+          valid: boolean
+        }[]
+      }
     }
     Enums: {
       [_ in never]: never
