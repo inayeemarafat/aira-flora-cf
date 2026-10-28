@@ -136,7 +136,7 @@ export interface AdminOrderWithItems extends Order {
 }
 
 export const adminListOrders = createServerFn({ method: "POST" })
-  .inputValidator((input: { adminPassword: string; status?: string }) => input)
+  .inputValidator((input: { adminPassword: string; status?: string | undefined }) => input)
   .handler(async ({ data }): Promise<AdminOrderWithItems[]> => {
     assertAdmin(data.adminPassword);
     const admin = await getAdmin();
@@ -227,6 +227,19 @@ export const adminSaveProduct = createServerFn({ method: "POST" })
     const { error } = await admin.from("products").insert(values);
     if (error) throw new Error(error.message);
     return { ok: true };
+  });
+
+export const adminProductsList = createServerFn({ method: "POST" })
+  .inputValidator(P)
+  .handler(async ({ data }): Promise<Product[]> => {
+    assertAdmin(data.adminPassword);
+    const admin = await getAdmin();
+    const { data: products, error } = await admin
+      .from("products")
+      .select("*")
+      .order("created_at", { ascending: true });
+    if (error) throw new Error(error.message);
+    return (products ?? []) as unknown as Product[];
   });
 
 export const adminDeleteProduct = createServerFn({ method: "POST" })

@@ -1,7 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import type { Coupon, Order, OrderItem, Product, ProductReview } from "./types";
 import { createPublicSupabase, getAdmin } from "./supabase-public";
-import { shippingCost } from "./shop-constants";
+import { orderShipping } from "./shop-constants";
 
 /* ---------------- Public catalogue reads ---------------- */
 
@@ -79,11 +79,11 @@ export interface CheckoutItemInput {
 export interface CheckoutInput {
   name: string;
   mobile: string;
-  email?: string;
+  email?: string | undefined;
   address: string;
   area: string;
-  remarks?: string;
-  couponCode?: string;
+  remarks?: string | undefined;
+  couponCode?: string | undefined;
   items: CheckoutItemInput[];
 }
 
@@ -147,7 +147,7 @@ export const createOrder = createServerFn({ method: "POST" })
     }
 
     const subtotal = lines.reduce((n, l) => n + l.price * l.quantity, 0);
-    const ship = shippingCost(data.area);
+    const ship = orderShipping(subtotal, data.area);
 
     let discount = 0;
     let couponCode: string | null = null;

@@ -89,7 +89,12 @@ export function Footer() {
 
         <div className="mt-12 flex flex-col items-center justify-between gap-3 border-t border-border pt-6 text-xs text-muted-foreground sm:flex-row">
           <span>© {new Date().getFullYear()} Aira Flora. All rights reserved.</span>
-          <span className="eyebrow text-[0.6rem]">Dhaka, Bangladesh</span>
+          <span className="flex items-center gap-4">
+            <Link to="/admin" className="eyebrow text-[0.6rem] text-muted-foreground hover:text-rose-deep">
+              Store Admin
+            </Link>
+            <span className="eyebrow text-[0.6rem]">Dhaka, Bangladesh</span>
+          </span>
         </div>
       </div>
     </footer>
