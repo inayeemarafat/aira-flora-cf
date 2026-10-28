@@ -12,8 +12,15 @@ export const SHIPPING_AREAS = [
   { id: "outside", label: "Outside Dhaka", cost: 130 },
 ] as const;
 
+export const FREE_SHIPPING_THRESHOLD = 2000;
+
 export function shippingCost(areaId: string): number {
   return SHIPPING_AREAS.find((a) => a.id === areaId)?.cost ?? 0;
+}
+
+/** Single source of truth for checkout shipping: free over the threshold, else the area rate. */
+export function orderShipping(subtotal: number, areaId: string): number {
+  return subtotal >= FREE_SHIPPING_THRESHOLD ? 0 : shippingCost(areaId);
 }
 
 export const ORDER_STATUSES: { value: string; label: string }[] = [

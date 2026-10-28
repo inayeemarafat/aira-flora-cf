@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Textarea } from "@/components/ui/textarea";
 import { createOrder, validateCoupon } from "@/lib/shop.functions";
-import { formatBDT, SHIPPING_AREAS } from "@/lib/shop-constants";
+import { formatBDT, orderShipping, SHIPPING_AREAS } from "@/lib/shop-constants";
 import { useCart } from "@/store/cart";
 
 export const Route = createFileRoute("/_site/checkout")({
@@ -34,7 +34,7 @@ function CheckoutPage() {
   const [busy, setBusy] = useState(false);
   const [placed, setPlaced] = useState<Placed | null>(null);
 
-  const shipping = subtotal >= 2000 ? 0 : (SHIPPING_AREAS.find((a) => a.id === area)?.cost ?? 0);
+  const shipping = orderShipping(subtotal, area);
   const total = Math.max(0, subtotal - discount) + shipping;
 
   async function applyCoupon() {
