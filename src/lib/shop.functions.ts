@@ -147,7 +147,7 @@ export const createOrder = createServerFn({ method: "POST" })
     }
 
     const subtotal = lines.reduce((n, l) => n + l.price * l.quantity, 0);
-    const ship = shippingCost(data.area);
+    const ship = subtotal >= 2000 ? 0 : shippingCost(data.area);
 
     let discount = 0;
     let couponCode: string | null = null;
