@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { Plus } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
@@ -10,6 +10,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  adminDeleteProduct,
+  adminSaveProduct,
+  adminProductsList,
+  adminUploadImage,
+  type AdminProductInput,
+} from "@/lib/admin.functions";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -201,6 +208,8 @@ function AdminProducts() {
 
       <ProductDialog
         value={editing}
+        password={password ?? ""}
+        onAuthError={() => setPassword(null)}
         onClose={() => setEditing(null)}
         onSave={(p) => save.mutate(p)}
         saving={save.isPending}
@@ -209,13 +218,94 @@ function AdminProducts() {
   );
 }
 
+function UploadButton({
+  adminPassword,
+  label,
+  multiple = false,
+  onUploaded,
+  onAuthError,
+}: {
+  adminPassword: string;
+  label: string;
+  multiple?: boolean;
+  onUploaded: (urls: string[]) => void;
+  onAuthError?: () => void;
+}) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = useState(false);
+
+  async function handleFiles(files: FileList | null) {
+    const list = Array.from(files ?? []);
+    if (!list.length) return;
+    setUploading(true);
+    try {
+      const urls: string[] = [];
+      for (const file of list) {
+        if (file.size > 10 * 1024 * 1024) {
+          toast.error(`"${file.name}" is larger than 10 MB.`);
+          continue;
+        }
+        const base64 = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(String(reader.result).split(",")[1] ?? "");
+          reader.onerror = () => reject(new Error(`Could not read "${file.name}".`));
+          reader.readAsDataURL(file);
+        });
+        const res = await adminUploadImage({
+          data: {
+            adminPassword,
+            fileName: file.name,
+            contentType: file.type || "image/jpeg",
+            dataBase64: base64,
+          },
+        });
+        urls.push(res.url);
+      }
+      if (!urls.length) throw new Error("Nothing was uploaded.");
+      onUploaded(urls);
+    } catch (err) {
+      if (err instanceof Error && err.message.startsWith("Unauthorized")) onAuthError?.();
+      toast.error(err instanceof Error ? err.message : "Upload failed.");
+    } finally {
+      setUploading(false);
+      if (inputRef.current) inputRef.current.value = "";
+    }
+  }
+
+  return (
+    <>
+      <Button
+        type="button"
+        variant="outline"
+        className="shrink-0 whitespace-nowrap rounded-none"
+        disabled={uploading}
+        onClick={() => inputRef.current?.click()}
+      >
+        {uploading ? "Uploading…" : label}
+      </Button>
+      <input
+        ref={inputRef}
+        type="file"
+        accept="image/*"
+        multiple={multiple}
+        className="hidden"
+        onChange={(e) => handleFiles(e.target.files)}
+      />
+    </>
+  );
+}
+
 function ProductDialog({
   value,
+  password,
+  onAuthError,
   onClose,
   onSave,
   saving,
 }: {
   value: AdminProductInput | null;
+  password: string;
+  onAuthError?: () => void;
   onClose: () => void;
   onSave: (p: AdminProductInput) => void;
   saving: boolean;
