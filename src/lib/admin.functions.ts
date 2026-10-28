@@ -1,5 +1,5 @@
 import { createServerFn } from "@tanstack/react-start";
-import { createHash, timingSafeEqual } from "node:crypto";
+import { createHash, randomUUID, timingSafeEqual } from "node:crypto";
 import type { Coupon, Order, OrderItem, Product } from "./types";
 import { createPublicSupabase, getAdmin } from "./supabase-public";
 
@@ -352,4 +352,48 @@ export const adminDeleteCoupon = createServerFn({ method: "POST" })
     const { error } = await admin.from("coupons").delete().eq("id", data.id);
     if (error) throw new Error(error.message);
     return { ok: true };
+  });
+
+/* ---------------- Image uploads ---------------- */
+
+const IMAGE_EXTENSIONS: Record<string, string> = {
+  "image/jpeg": "jpg",
+  "image/png": "png",
+  "image/webp": "webp",
+  "image/gif": "gif",
+  "image/avif": "avif",
+};
+
+const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
+
+export const adminUploadImage = createServerFn({ method: "POST" })
+  .inputValidator(
+    (input: {
+      adminPassword: string;
+      fileName: string;
+      contentType: string;
+      dataBase64: string;
+    }) => input,
+  )
+  .handler(async ({ data }) => {
+    assertAdmin(data.adminPassword);
+    const ext = IMAGE_EXTENSIONS[data.contentType];
+    if (!ext) {
+      throw new Error("Unsupported image type. Use JPG, PNG, WebP, GIF or AVIF.");
+    }
+    const bytes = Buffer.from(data.dataBase64, "base64");
+    if (!bytes.length) throw new Error("The selected file is empty.");
+    if (bytes.length > MAX_IMAGE_BYTES) {
+      throw new Error("That image is too large. The maximum size is 10 MB.");
+    }
+    // Random server-side name — never trust the client's filename.
+    const path = `${randomUUID()}.${ext}`;
+    const admin = await getAdmin();
+    const { error } = await admin.storage.from("product-images").upload(
+      path,
+      new Blob([new Uint8Array(bytes)], { type: data.contentType }),
+      { contentType: data.contentType, cacheControl: "31536000", upsert: false },
+    );
+    if (error) throw new Error(error.message);
+    return { path, url: `/api/public/product-images/${path}` };
   });
