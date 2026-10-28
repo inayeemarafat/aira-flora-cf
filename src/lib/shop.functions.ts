@@ -1,5 +1,5 @@
 import { createServerFn } from "@tanstack/react-start";
-import type { Coupon, Order, OrderItem, Product, ProductReview } from "./types";
+import type { Order, OrderItem, Product, ProductReview } from "./types";
 import { createPublicSupabase, getAdmin } from "./supabase-public";
 import { orderShipping } from "./shop-constants";
 
