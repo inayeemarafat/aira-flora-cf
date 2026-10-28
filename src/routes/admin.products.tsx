@@ -406,12 +406,52 @@ function ProductDialog({
             />
           </div>
           <div className="space-y-2 sm:col-span-2">
-            <Label htmlFor="p-image">Main image URL</Label>
-            <Input id="p-image" required value={form.image} onChange={(e) => set("image", e.target.value)} className="rounded-none" />
+            <Label htmlFor="p-image">Main image</Label>
+            <div className="flex items-center gap-2">
+              <Input
+                id="p-image"
+                required
+                value={form.image}
+                onChange={(e) => set("image", e.target.value)}
+                placeholder="Upload a photo, or paste a URL"
+                className="flex-1 rounded-none"
+              />
+              <UploadButton
+                adminPassword={password}
+                label="Upload photo"
+                onUploaded={(urls) => urls[0] && set("image", urls[0])}
+                onAuthError={onAuthError}
+              />
+            </div>
+            {form.image ? (
+              <img
+                src={form.image}
+                alt="Main image preview"
+                className="h-24 w-20 border border-border object-cover"
+              />
+            ) : null}
           </div>
           <div className="space-y-2 sm:col-span-2">
-            <Label htmlFor="p-gallery">Gallery URLs (comma separated)</Label>
-            <Input id="p-gallery" value={galleryText} onChange={(e) => setGalleryText(e.target.value)} className="rounded-none" />
+            <Label htmlFor="p-gallery">Gallery (comma separated URLs)</Label>
+            <div className="flex items-center gap-2">
+              <Input
+                id="p-gallery"
+                value={galleryText}
+                onChange={(e) => setGalleryText(e.target.value)}
+                className="flex-1 rounded-none"
+              />
+              <UploadButton
+                adminPassword={password}
+                label="Add photos"
+                multiple
+                onUploaded={(urls) => {
+                  if (!urls.length) return;
+                  setGalleryText((t) => (t.trim() ? `${t.trim().replace(/,\s*$/, "")}, ${urls.join(", ")}` : urls.join(", ")));
+                }}
+                onAuthError={onAuthError}
+              />
+            </div>
+            <p className="text-xs text-muted-foreground">You can pick several photos from your phone or computer at once.</p>
           </div>
           <div className="space-y-2">
             <Label htmlFor="p-sizes">Sizes (comma separated)</Label>
