@@ -153,23 +153,15 @@ export const createOrder = createServerFn({ method: "POST" })
     let couponCode: string | null = null;
     if (data.couponCode) {
       const code = data.couponCode.trim().toUpperCase();
-      const { data: coupon } = await supabase
-        .from("coupons")
-        .select("*")
-        .eq("code", code)
-        .eq("active", true)
-        .maybeSingle();
-      const c = coupon as Coupon | null;
-      if (
-        c &&
-        subtotal >= c.min_order &&
-        (!c.expires_at || new Date(c.expires_at).getTime() > now)
-      ) {
-        discount =
-          c.type === "percent"
-            ? Math.round((subtotal * c.value) / 100)
-            : Math.min(c.value, subtotal);
-        couponCode = c.code;
+      const { data: verdict, error: couponErr } = await supabase.rpc("validate_coupon", {
+        _code: code,
+        _subtotal: subtotal,
+      });
+      if (couponErr) throw new Error(couponErr.message);
+      const v = (verdict ?? [])[0];
+      if (v?.valid) {
+        discount = v.discount;
+        couponCode = code;
       }
     }
 
@@ -267,30 +259,15 @@ export const validateCoupon = createServerFn({ method: "POST" })
     const supabase = createPublicSupabase();
     const code = data.code.trim().toUpperCase();
     if (!code) return { valid: false, discount: 0, message: "Enter a code." };
-    const { data: coupon, error } = await supabase
-      .from("coupons")
-      .select("*")
-      .eq("code", code)
-      .eq("active", true)
-      .maybeSingle();
+
+    const { data: verdict, error } = await supabase.rpc("validate_coupon", {
+      _code: code,
+      _subtotal: data.subtotal,
+    });
     if (error) throw new Error(error.message);
-    const c = coupon as Coupon | null;
-    if (!c) return { valid: false, discount: 0, message: "This code isn't valid." };
-    if (c.expires_at && new Date(c.expires_at).getTime() < Date.now()) {
-      return { valid: false, discount: 0, message: "This code has expired." };
-    }
-    if (data.subtotal < c.min_order) {
-      return {
-        valid: false,
-        discount: 0,
-        message: `Minimum order for this code is ৳${c.min_order.toLocaleString()}.`,
-      };
-    }
-    const discount =
-      c.type === "percent"
-        ? Math.round((data.subtotal * c.value) / 100)
-        : Math.min(c.value, data.subtotal);
-    return { valid: true, discount, message: "Code applied." };
+    const v = (verdict ?? [])[0];
+    if (!v) return { valid: false, discount: 0, message: "This code isn't valid." };
+    return { valid: v.valid, discount: v.discount, message: v.message };
   });
 
 export const subscribeNewsletter = createServerFn({ method: "POST" })
