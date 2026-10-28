@@ -30,12 +30,6 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
-import {
-  adminDeleteProduct,
-  adminSaveProduct,
-  adminProductsList,
-  type AdminProductInput,
-} from "@/lib/admin.functions";
 import { isAuthError, useAdminPassword } from "@/lib/admin-auth";
 import { CATEGORIES, formatBDT } from "@/lib/shop-constants";
 
@@ -229,7 +223,7 @@ function UploadButton({
   label: string;
   multiple?: boolean;
   onUploaded: (urls: string[]) => void;
-  onAuthError?: () => void;
+  onAuthError: (() => void) | undefined;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
