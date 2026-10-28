@@ -136,7 +136,7 @@ export interface AdminOrderWithItems extends Order {
 }
 
 export const adminListOrders = createServerFn({ method: "POST" })
-  .inputValidator((input: { adminPassword: string; status?: string }) => input)
+  .inputValidator((input: { adminPassword: string; status?: string | undefined }) => input)
   .handler(async ({ data }): Promise<AdminOrderWithItems[]> => {
     assertAdmin(data.adminPassword);
     const admin = await getAdmin();

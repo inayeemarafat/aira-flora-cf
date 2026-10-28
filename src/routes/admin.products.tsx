@@ -40,7 +40,7 @@ const EMPTY: AdminProductInput = {
   name: "",
   slug: "",
   description: "",
-  category: CATEGORIES[0],
+  category: "Dresses",
   price: 0,
   compare_price: null,
   stock: 0,

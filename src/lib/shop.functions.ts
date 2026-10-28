@@ -79,11 +79,11 @@ export interface CheckoutItemInput {
 export interface CheckoutInput {
   name: string;
   mobile: string;
-  email?: string;
+  email?: string | undefined;
   address: string;
   area: string;
-  remarks?: string;
-  couponCode?: string;
+  remarks?: string | undefined;
+  couponCode?: string | undefined;
   items: CheckoutItemInput[];
 }
 

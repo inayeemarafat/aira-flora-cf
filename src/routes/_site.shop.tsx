@@ -1,6 +1,7 @@
 import { useSuspenseQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { useMemo } from "react";
+import { z } from "zod";
 import { ProductCard } from "@/components/site/product-card";
 import {
   Select,
@@ -13,11 +14,13 @@ import { productsQueryOptions } from "@/lib/queries";
 import { CATEGORIES } from "@/lib/shop-constants";
 import { cn } from "@/lib/utils";
 
+const shopSearch = z.object({
+  category: z.string().optional(),
+  sort: z.string().optional(),
+});
+
 export const Route = createFileRoute("/_site/shop")({
-  validateSearch: (search: Record<string, unknown>) => ({
-    category: typeof search.category === "string" ? search.category : undefined,
-    sort: typeof search.sort === "string" ? search.sort : undefined,
-  }),
+  validateSearch: (search) => shopSearch.parse(search),
   loader: ({ context }) => context.queryClient.ensureQueryData(productsQueryOptions),
   component: ShopPage,
 });

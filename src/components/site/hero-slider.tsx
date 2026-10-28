@@ -26,7 +26,7 @@ export function HeroSlider() {
     return () => clearInterval(timer);
   }, []);
 
-  const slide = SLIDES[index];
+  const slide = SLIDES[index] ?? SLIDES[0]!;
 
   return (
     <section className="relative h-[74vh] min-h-[520px] w-full overflow-hidden bg-primary">
