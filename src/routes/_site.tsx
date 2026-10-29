@@ -25,6 +25,7 @@ function SiteLayout() {
           <CartDrawer />
           <WishlistDrawer />
           <MobileBottomNav />
+          <ScrollToTop />
         </div>
       </WishlistProvider>
     </CartProvider>
