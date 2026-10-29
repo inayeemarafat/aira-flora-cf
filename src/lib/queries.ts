@@ -1,9 +1,14 @@
 import { queryOptions } from "@tanstack/react-query";
-import { getProductBySlug, listLatestReviews, listProducts } from "./shop.functions";
+import { getProductBySlug, listCategories, listLatestReviews, listProducts } from "./shop.functions";
 
 export const productsQueryOptions = queryOptions({
   queryKey: ["products"],
   queryFn: () => listProducts(),
+});
+
+export const categoriesQueryOptions = queryOptions({
+  queryKey: ["categories"],
+  queryFn: () => listCategories(),
 });
 
 export const latestReviewsQueryOptions = queryOptions({

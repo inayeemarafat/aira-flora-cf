@@ -6,9 +6,8 @@ import { FlashCountdown } from "@/components/site/flash-countdown";
 import { HeroSlider } from "@/components/site/hero-slider";
 import { ProductCard } from "@/components/site/product-card";
 import { Button } from "@/components/ui/button";
-import { latestReviewsQueryOptions, productsQueryOptions } from "@/lib/queries";
+import { categoriesQueryOptions, latestReviewsQueryOptions, productsQueryOptions } from "@/lib/queries";
 import { trackVisit } from "@/lib/shop.functions";
-import { CATEGORIES } from "@/lib/shop-constants";
 
 // No head() here: the home route inherits title/description/og/twitter from
 // __root.tsx, and ships no og:image so serve-time hosting can inject the
@@ -18,6 +17,7 @@ export const Route = createFileRoute("/_site/")({
     Promise.all([
       context.queryClient.ensureQueryData(productsQueryOptions),
       context.queryClient.ensureQueryData(latestReviewsQueryOptions),
+      context.queryClient.ensureQueryData(categoriesQueryOptions),
     ]),
   component: Home,
 });
@@ -34,6 +34,7 @@ function isFlashActive(p: { is_flash_sale: boolean; flash_sale_price: number | n
 function Home() {
   const { data: products } = useSuspenseQuery(productsQueryOptions);
   const { data: reviews } = useSuspenseQuery(latestReviewsQueryOptions);
+  const { data: categories } = useSuspenseQuery(categoriesQueryOptions);
 
   useEffect(() => {
     trackVisit().catch(() => {});
@@ -117,7 +118,7 @@ function Home() {
             <h2 className="mt-2 font-display text-4xl font-medium text-foreground">Shop by Category</h2>
           </div>
           <div className="mt-10 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
-            {CATEGORIES.map((c) => (
+            {categories.map((c) => (
               <Link
                 key={c}
                 to="/shop"

@@ -5,8 +5,7 @@ import { useState, type ReactNode } from "react";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import { useCart } from "@/store/cart";
 import { useWishlist } from "@/store/wishlist";
-import { CATEGORIES } from "@/lib/shop-constants";
-import { productsQueryOptions } from "@/lib/queries";
+import { categoriesQueryOptions, productsQueryOptions } from "@/lib/queries";
 
 function Item({
   label,
@@ -51,7 +50,9 @@ export function MobileBottomNav() {
   const [catOpen, setCatOpen] = useState(false);
   const { data: products = [] } = useQuery({ ...productsQueryOptions, enabled: catOpen });
 
-  const cats = CATEGORIES.map((c) => {
+  const { data: categoryNames = [] } = useQuery({ ...categoriesQueryOptions, enabled: catOpen });
+
+  const cats = categoryNames.map((c) => {
     const list = products.filter((p) => p.category === c);
     return { name: c, count: list.length, image: list[0]?.image };
   });

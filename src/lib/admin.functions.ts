@@ -359,6 +359,100 @@ export const adminDeleteProduct = createServerFn({ method: "POST" })
     return { ok: true };
   });
 
+/* ---------------- Categories ---------------- */
+
+export interface AdminCategory {
+  id: string;
+  name: string;
+  productCount: number;
+}
+
+export const adminListCategories = createServerFn({ method: "POST" })
+  .inputValidator(P)
+  .handler(async ({ data }): Promise<AdminCategory[]> => {
+    await assertAdmin(data.adminPassword);
+    const db = await getDb();
+    const { results } = await db
+      .prepare(
+        `SELECT c.id, c.name,
+                (SELECT COUNT(*) FROM products p WHERE p.category = c.name) AS product_count
+         FROM categories c
+         ORDER BY c.sort_order ASC, c.name ASC`,
+      )
+      .all();
+    return results.map((r) => ({
+      id: String(r["id"]),
+      name: String(r["name"]),
+      productCount: Number(r["product_count"]),
+    }));
+  });
+
+export const adminSaveCategory = createServerFn({ method: "POST" })
+  .inputValidator((input: { adminPassword: string; id?: string | undefined; name: string }) => input)
+  .handler(async ({ data }) => {
+    await assertAdmin(data.adminPassword);
+    const db = await getDb();
+    const name = data.name.trim().replace(/\s+/g, " ");
+    if (!name) throw new Error("Enter a category name.");
+    if (name.length > 40) throw new Error("Category names can be at most 40 characters.");
+
+    const clash = await db
+      .prepare("SELECT id FROM categories WHERE lower(name) = lower(?) AND id != ? LIMIT 1")
+      .bind(name, data.id ?? "")
+      .first();
+    if (clash) throw new Error("That category already exists.");
+
+    if (data.id) {
+      const current = await db
+        .prepare("SELECT name FROM categories WHERE id = ?")
+        .bind(data.id)
+        .first<Record<string, unknown>>();
+      if (!current) throw new Error("Category not found.");
+      const oldName = String(current["name"]);
+      await db.batch([
+        db.prepare("UPDATE categories SET name = ? WHERE id = ?").bind(name, data.id),
+        // Products reference the category by name, so keep them in sync.
+        db
+          .prepare("UPDATE products SET category = ?, updated_at = ? WHERE category = ?")
+          .bind(name, nowIso(), oldName),
+      ]);
+      return { ok: true };
+    }
+
+    const maxRow = await db
+      .prepare("SELECT COALESCE(MAX(sort_order), 0) AS m FROM categories")
+      .first<Record<string, unknown>>();
+    await db
+      .prepare("INSERT INTO categories (id, name, sort_order, created_at) VALUES (?, ?, ?, ?)")
+      .bind(newId(), name, Number(maxRow?.["m"] ?? 0) + 1, nowIso())
+      .run();
+    return { ok: true };
+  });
+
+export const adminDeleteCategory = createServerFn({ method: "POST" })
+  .inputValidator((input: { adminPassword: string; id: string }) => input)
+  .handler(async ({ data }) => {
+    await assertAdmin(data.adminPassword);
+    const db = await getDb();
+    const current = await db
+      .prepare("SELECT name FROM categories WHERE id = ?")
+      .bind(data.id)
+      .first<Record<string, unknown>>();
+    if (!current) return { ok: true };
+    const countRow = await db
+      .prepare("SELECT COUNT(*) AS n FROM products WHERE category = ?")
+      .bind(String(current["name"]))
+      .first<Record<string, unknown>>();
+    const n = Number(countRow?.["n"] ?? 0);
+    if (n > 0) {
+      throw new Error(
+        `${n} product${n === 1 ? " is" : "s are"} still in this category. Move or delete them first.`,
+      );
+    }
+    await db.prepare("DELETE FROM categories WHERE id = ?").bind(data.id).run();
+    return { ok: true };
+  });
+
 /* ---------------- Customers ---------------- */
 
 export interface AdminCustomer {

@@ -31,7 +31,9 @@ import {
 } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
 import { isAuthError, useAdminPassword } from "@/lib/admin-auth";
-import { CATEGORIES, formatBDT } from "@/lib/shop-constants";
+import { CategoryManager } from "@/components/admin/category-manager";
+import { categoriesQueryOptions } from "@/lib/queries";
+import { formatBDT } from "@/lib/shop-constants";
 
 export const Route = createFileRoute("/admin/products")({
   component: AdminProducts,
@@ -104,9 +106,12 @@ function AdminProducts() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-4">
         <h1 className="font-display text-3xl font-medium">Products</h1>
-        <Button onClick={() => setEditing({ ...EMPTY })} className="rounded-none bg-primary uppercase tracking-[0.14em]">
-          <Plus className="mr-2 h-4 w-4" /> New product
-        </Button>
+        <div className="flex flex-wrap gap-3">
+          <CategoryManager />
+          <Button onClick={() => setEditing({ ...EMPTY })} className="rounded-none bg-primary uppercase tracking-[0.14em]">
+            <Plus className="mr-2 h-4 w-4" /> New product
+          </Button>
+        </div>
       </div>
 
       {q.isPending ? (
@@ -305,6 +310,14 @@ function ProductDialog({
   saving: boolean;
 }) {
   const [form, setForm] = useState<AdminProductInput>(value ?? EMPTY);
+  const { data: categoryList = [] } = useQuery(categoriesQueryOptions);
+  const categoryOptions = categoryList.includes(form.category) || !form.category ? categoryList : [form.category, ...categoryList];
+  useEffect(() => {
+    // New product: if the default category no longer exists, fall back to the first one.
+    if (!form.id && categoryList.length > 0 && !categoryList.includes(form.category)) {
+      setForm((f) => ({ ...f, category: categoryList[0] ?? f.category }));
+    }
+  }, [categoryList, form.id, form.category]);
   const [sizesText, setSizesText] = useState("");
   const [colorsText, setColorsText] = useState("");
   const [galleryText, setGalleryText] = useState("");
@@ -357,7 +370,7 @@ function ProductDialog({
               onChange={(e) => set("category", e.target.value)}
               className="h-10 w-full border border-input bg-transparent px-3 text-sm"
             >
-              {CATEGORIES.map((c) => (
+              {categoryOptions.map((c) => (
                 <option key={c} value={c}>
                   {c}
                 </option>

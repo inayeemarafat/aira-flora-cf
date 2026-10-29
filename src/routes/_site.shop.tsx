@@ -10,8 +10,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { productsQueryOptions } from "@/lib/queries";
-import { CATEGORIES } from "@/lib/shop-constants";
+import { categoriesQueryOptions, productsQueryOptions } from "@/lib/queries";
 import { cn } from "@/lib/utils";
 
 const shopSearch = z.object({
@@ -21,12 +20,17 @@ const shopSearch = z.object({
 
 export const Route = createFileRoute("/_site/shop")({
   validateSearch: (search) => shopSearch.parse(search),
-  loader: ({ context }) => context.queryClient.ensureQueryData(productsQueryOptions),
+  loader: ({ context }) =>
+    Promise.all([
+      context.queryClient.ensureQueryData(productsQueryOptions),
+      context.queryClient.ensureQueryData(categoriesQueryOptions),
+    ]),
   component: ShopPage,
 });
 
 function ShopPage() {
   const { data: products } = useSuspenseQuery(productsQueryOptions);
+  const { data: categories } = useSuspenseQuery(categoriesQueryOptions);
   const { category, sort } = Route.useSearch();
   const navigate = Route.useNavigate();
 
@@ -70,7 +74,7 @@ function ShopPage() {
           >
             All
           </button>
-          {CATEGORIES.map((c) => (
+          {categories.map((c) => (
             <button
               key={c}
               onClick={() => navigate({ search: { category: c } })}

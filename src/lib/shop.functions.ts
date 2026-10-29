@@ -24,6 +24,23 @@ export const listProducts = createServerFn({ method: "GET" }).handler(
   },
 );
 
+export const listCategories = createServerFn({ method: "GET" }).handler(
+  async (): Promise<string[]> => {
+    const db = await getDb();
+    const [catRes, usedRes] = await Promise.all([
+      db.prepare("SELECT name FROM categories ORDER BY sort_order ASC, name ASC").all(),
+      db.prepare("SELECT DISTINCT category FROM products").all(),
+    ]);
+    const names = catRes.results.map((r) => String(r["name"]));
+    // Products whose category isn't in the table still show up in the storefront.
+    for (const r of usedRes.results) {
+      const c = String(r["category"]);
+      if (!names.includes(c)) names.push(c);
+    }
+    return names;
+  },
+);
+
 export const listLatestReviews = createServerFn({ method: "GET" }).handler(
   async (): Promise<ProductReview[]> => {
     const db = await getDb();
