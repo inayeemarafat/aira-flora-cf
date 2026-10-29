@@ -1,9 +1,13 @@
 import { Link } from "@tanstack/react-router";
-import { Star } from "lucide-react";
+import { Heart, Star } from "lucide-react";
+import { toast } from "sonner";
 import type { Product } from "@/lib/types";
 import { formatBDT } from "@/lib/shop-constants";
+import { useWishlist } from "@/store/wishlist";
 
 export function ProductCard({ product }: { product: Product }) {
+  const { has, toggle } = useWishlist();
+  const saved = has(product.id);
   const flashActive =
     product.is_flash_sale &&
     product.flash_sale_price != null &&
@@ -39,6 +43,19 @@ export function ProductCard({ product }: { product: Product }) {
             Sold out
           </span>
         ) : null}
+        <button
+          type="button"
+          aria-label={saved ? "Remove from wishlist" : "Save to wishlist"}
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            const added = toggle({ id: product.id, slug: product.slug, name: product.name, price, image: product.image });
+            toast.success(added ? "Saved to wishlist" : "Removed from wishlist");
+          }}
+          className="absolute right-3 top-3 flex h-9 w-9 items-center justify-center rounded-full bg-background/85 text-foreground shadow-sm backdrop-blur transition hover:scale-105"
+        >
+          <Heart className={`h-4 w-4 ${saved ? "fill-rose-deep text-rose-deep" : ""}`} />
+        </button>
         <div className="absolute inset-x-0 bottom-0 translate-y-full bg-background/90 py-3 text-center text-[0.7rem] font-medium uppercase tracking-[0.2em] text-foreground backdrop-blur transition-transform duration-300 group-hover:translate-y-0">
           View Details
         </div>
