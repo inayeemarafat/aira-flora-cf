@@ -1,0 +1,28 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "aira-flora",
+  // Built by `vite build` (TanStack Start + Nitro, Cloudflare target).
+  "main": ".output/server/index.mjs",
+  "compatibility_date": "2025-09-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "assets": {
+    "directory": ".output/public"
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "aira-flora-db",
+      "database_id": "9e943800-49c5-4d5b-a3c1-0968cdcd2cea",
+      "migrations_dir": "migrations"
+    }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "IMAGES",
+      "bucket_name": "aira-flora-images"
+    }
+  ],
+  "observability": {
+    "enabled": true
+  }
+}

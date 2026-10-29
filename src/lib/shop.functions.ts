@@ -1,32 +1,36 @@
 import { createServerFn } from "@tanstack/react-start";
 import type { Order, OrderItem, Product, ProductReview } from "./types";
-import { createPublicSupabase, getAdmin } from "./supabase-public";
+import {
+  checkCoupon,
+  getDb,
+  mapOrder,
+  mapOrderItem,
+  mapProduct,
+  mapReview,
+  newId,
+  nowIso,
+} from "./db";
 import { orderShipping } from "./shop-constants";
 
 /* ---------------- Public catalogue reads ---------------- */
 
 export const listProducts = createServerFn({ method: "GET" }).handler(
   async (): Promise<Product[]> => {
-    const supabase = createPublicSupabase();
-    const { data, error } = await supabase
-      .from("products")
-      .select("*")
-      .order("created_at", { ascending: true });
-    if (error) throw new Error(error.message);
-    return (data ?? []) as unknown as Product[];
+    const db = await getDb();
+    const { results } = await db
+      .prepare("SELECT * FROM products ORDER BY created_at ASC, rowid ASC")
+      .all();
+    return results.map(mapProduct);
   },
 );
 
 export const listLatestReviews = createServerFn({ method: "GET" }).handler(
   async (): Promise<ProductReview[]> => {
-    const supabase = createPublicSupabase();
-    const { data, error } = await supabase
-      .from("product_reviews")
-      .select("*")
-      .order("created_at", { ascending: false })
-      .limit(6);
-    if (error) throw new Error(error.message);
-    return (data ?? []) as unknown as ProductReview[];
+    const db = await getDb();
+    const { results } = await db
+      .prepare("SELECT * FROM product_reviews ORDER BY created_at DESC LIMIT 6")
+      .all();
+    return results.map(mapReview);
   },
 );
 
@@ -37,33 +41,29 @@ export const getProductBySlug = createServerFn({ method: "GET" })
     reviews: ProductReview[];
     related: Product[];
   } | null> => {
-    const supabase = createPublicSupabase();
-    const { data: product, error } = await supabase
-      .from("products")
-      .select("*")
-      .eq("slug", data.slug)
-      .maybeSingle();
-    if (error) throw new Error(error.message);
-    if (!product) return null;
+    const db = await getDb();
+    const row = await db
+      .prepare("SELECT * FROM products WHERE slug = ? LIMIT 1")
+      .bind(data.slug)
+      .first();
+    if (!row) return null;
+    const product = mapProduct(row);
 
     const [reviewsRes, relatedRes] = await Promise.all([
-      supabase
-        .from("product_reviews")
-        .select("*")
-        .eq("product_id", (product as unknown as Product).id)
-        .order("created_at", { ascending: false }),
-      supabase
-        .from("products")
-        .select("*")
-        .eq("category", (product as unknown as Product).category)
-        .neq("id", (product as unknown as Product).id)
-        .limit(4),
+      db
+        .prepare("SELECT * FROM product_reviews WHERE product_id = ? ORDER BY created_at DESC")
+        .bind(product.id)
+        .all(),
+      db
+        .prepare("SELECT * FROM products WHERE category = ? AND id != ? LIMIT 4")
+        .bind(product.category, product.id)
+        .all(),
     ]);
 
     return {
-      product: product as unknown as Product,
-      reviews: (reviewsRes.data ?? []) as unknown as ProductReview[],
-      related: (relatedRes.data ?? []) as unknown as Product[],
+      product,
+      reviews: reviewsRes.results.map(mapReview),
+      related: relatedRes.results.map(mapProduct),
     };
   });
 
@@ -90,8 +90,7 @@ export interface CheckoutInput {
 export const createOrder = createServerFn({ method: "POST" })
   .inputValidator((input: CheckoutInput) => input)
   .handler(async ({ data }) => {
-    const supabase = createPublicSupabase();
-    const admin = await getAdmin();
+    const db = await getDb();
 
     if (!data.items.length) throw new Error("Your cart is empty.");
     if (!data.name?.trim() || !data.mobile?.trim() || !data.address?.trim()) {
@@ -102,12 +101,15 @@ export const createOrder = createServerFn({ method: "POST" })
     }
 
     const ids = [...new Set(data.items.map((i) => i.productId))];
-    const { data: products, error: prodErr } = await supabase
-      .from("products")
-      .select("id, name, price, stock, image, is_flash_sale, flash_sale_price, flash_ends_at, sizes")
-      .in("id", ids);
-    if (prodErr) throw new Error(prodErr.message);
-    const byId = new Map((products ?? []).map((p) => [p.id, p]));
+    const placeholders = ids.map(() => "?").join(",");
+    const { results: productRows } = await db
+      .prepare(
+        `SELECT id, name, price, stock, image, is_flash_sale, flash_sale_price, flash_ends_at
+         FROM products WHERE id IN (${placeholders})`,
+      )
+      .bind(...ids)
+      .all<Record<string, unknown>>();
+    const byId = new Map(productRows.map((p) => [String(p["id"]), p]));
     const now = Date.now();
 
     const lines: {
@@ -118,31 +120,38 @@ export const createOrder = createServerFn({ method: "POST" })
       color: string | null;
       quantity: number;
       price: number;
-      stock: number;
     }[] = [];
+
+    // Total requested per product, so one product split over several sizes can't exceed stock.
+    const requested = new Map<string, number>();
 
     for (const item of data.items) {
       const p = byId.get(item.productId);
       if (!p) throw new Error("One of the products is no longer available.");
+      const name = String(p["name"]);
+      const stock = Number(p["stock"]);
+      const flashPrice = p["flash_sale_price"] == null ? null : Number(p["flash_sale_price"]);
+      const flashEnds = p["flash_ends_at"] == null ? null : String(p["flash_ends_at"]);
       const flashActive =
-        p.is_flash_sale &&
-        p.flash_sale_price != null &&
-        p.flash_ends_at != null &&
-        new Date(p.flash_ends_at).getTime() > now;
-      const unitPrice = flashActive ? p.flash_sale_price! : p.price;
+        Boolean(p["is_flash_sale"]) &&
+        flashPrice != null &&
+        flashEnds != null &&
+        new Date(flashEnds).getTime() > now;
+      const unitPrice = flashActive ? flashPrice! : Number(p["price"]);
       const qty = Math.max(1, Math.floor(item.quantity));
-      if (qty > p.stock) {
-        throw new Error(`Only ${p.stock} left in stock for ${p.name}.`);
+      const total = (requested.get(item.productId) ?? 0) + qty;
+      if (total > stock) {
+        throw new Error(`Only ${stock} left in stock for ${name}.`);
       }
+      requested.set(item.productId, total);
       lines.push({
-        product_id: p.id,
-        product_name: p.name,
-        image: p.image,
+        product_id: item.productId,
+        product_name: name,
+        image: p["image"] == null ? null : String(p["image"]),
         size: item.size,
         color: item.color ?? null,
         quantity: qty,
         price: unitPrice,
-        stock: p.stock,
       });
     }
 
@@ -153,102 +162,119 @@ export const createOrder = createServerFn({ method: "POST" })
     let couponCode: string | null = null;
     if (data.couponCode) {
       const code = data.couponCode.trim().toUpperCase();
-      const { data: verdict, error: couponErr } = await supabase.rpc("validate_coupon", {
-        _code: code,
-        _subtotal: subtotal,
-      });
-      if (couponErr) throw new Error(couponErr.message);
-      const v = (verdict ?? [])[0];
-      if (v?.valid) {
-        discount = v.discount;
+      const verdict = await checkCoupon(db, code, subtotal);
+      if (verdict.valid) {
+        discount = verdict.discount;
         couponCode = code;
       }
     }
 
     const total = subtotal - discount + ship;
     const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+    const random = crypto.getRandomValues(new Uint8Array(6));
     let suffix = "";
-    for (let i = 0; i < 6; i++) {
-      suffix += alphabet[Math.floor(Math.random() * alphabet.length)];
-    }
+    for (const b of random) suffix += alphabet[b % alphabet.length];
     const orderCode = `AF-${suffix}`;
 
     const mobile = data.mobile.replace(/[\s-]/g, "");
-    const { data: order, error: orderErr } = await admin
-      .from("orders")
-      .insert({
-        order_id: orderCode,
-        customer_name: data.name.trim(),
-        address: data.address.trim(),
-        shipping_area: data.area,
-        mobile,
-        email: data.email?.trim() || null,
-        remarks: data.remarks?.trim() || null,
-        total_amount: total,
-        subtotal,
-        shipping_cost: ship,
-        discount_amount: discount,
-        coupon_code: couponCode,
-        payment_method: "cod",
-      })
-      .select("id, order_id")
-      .single();
-    if (orderErr) throw new Error(orderErr.message);
+    const orderUuid = newId();
+    const stamp = nowIso();
 
-    const { error: itemsErr } = await admin.from("order_items").insert(
-      lines.map((l) => ({
-        order_id: order.id,
-        product_id: l.product_id,
-        product_name: l.product_name,
-        image: l.image,
-        size: l.size,
-        color: l.color,
-        quantity: l.quantity,
-        price: l.price,
-      })),
-    );
-    if (itemsErr) throw new Error(itemsErr.message);
-
-    // Decrement stock
-    for (const l of lines) {
-      await admin
-        .from("products")
-        .update({ stock: l.stock - l.quantity })
-        .eq("id", l.product_id);
-    }
-
+    const statements = [
+      db
+        .prepare(
+          `INSERT INTO orders
+            (id, order_id, customer_name, address, shipping_area, mobile, email, remarks,
+             total_amount, subtotal, shipping_cost, discount_amount, coupon_code,
+             payment_method, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'cod', ?, ?)`,
+        )
+        .bind(
+          orderUuid,
+          orderCode,
+          data.name.trim(),
+          data.address.trim(),
+          data.area,
+          mobile,
+          data.email?.trim() || null,
+          data.remarks?.trim() || null,
+          total,
+          subtotal,
+          ship,
+          discount,
+          couponCode,
+          stamp,
+          stamp,
+        ),
+      ...lines.map((l) =>
+        db
+          .prepare(
+            `INSERT INTO order_items
+              (id, order_id, product_id, product_name, image, size, color, quantity, price)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          )
+          .bind(
+            newId(),
+            orderUuid,
+            l.product_id,
+            l.product_name,
+            l.image,
+            l.size,
+            l.color,
+            l.quantity,
+            l.price,
+          ),
+      ),
+      // products.stock has CHECK (stock >= 0): if anyone bought the last items in the
+      // meantime this fails and the whole batch (order included) rolls back.
+      ...[...requested.entries()].map(([productId, qty]) =>
+        db
+          .prepare("UPDATE products SET stock = stock - ?, updated_at = ? WHERE id = ?")
+          .bind(qty, stamp, productId),
+      ),
+    ];
     if (couponCode) {
-      const res = await admin.rpc("increment_coupon_usage", { _code: couponCode });
-      if (res.error) throw new Error(res.error.message);
+      statements.push(
+        db
+          .prepare("UPDATE coupons SET used_count = used_count + 1 WHERE code = ?")
+          .bind(couponCode),
+      );
     }
 
-    return { orderId: order.order_id, total, mobile };
+    try {
+      await db.batch(statements);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      if (/CHECK constraint failed/i.test(message)) {
+        throw new Error("Some items just sold out. Please review your bag and try again.");
+      }
+      throw err;
+    }
+
+    return { orderId: orderCode, total, mobile };
   });
 
 export const trackOrder = createServerFn({ method: "POST" })
   .inputValidator((input: { orderId: string; mobile: string }) => input)
   .handler(async ({ data }): Promise<{ order: Order; items: OrderItem[] } | null> => {
-    const admin = await getAdmin();
+    const db = await getDb();
     const orderId = data.orderId.trim().toUpperCase();
     const mobile = data.mobile.replace(/[\s-]/g, "");
     if (!orderId || !mobile) return null;
 
-    const { data: order, error } = await admin
-      .from("orders")
-      .select("*")
-      .eq("order_id", orderId)
-      .eq("mobile", mobile)
-      .maybeSingle();
-    if (error) throw new Error(error.message);
-    if (!order) return null;
+    const row = await db
+      .prepare("SELECT * FROM orders WHERE order_id = ? AND mobile = ? LIMIT 1")
+      .bind(orderId, mobile)
+      .first();
+    if (!row) return null;
+    const order = mapOrder(row);
 
-    const { data: items, error: itemsErr } = await admin
-      .from("order_items")
-      .select("*")
-      .eq("order_id", (order as Order).id);
-    if (itemsErr) throw new Error(itemsErr.message);
+    const { results } = await db
+      .prepare("SELECT * FROM order_items WHERE order_id = ?")
+      .bind(order.id)
+      .all();
 
-    return { order: order as Order, items: (items ?? []) as OrderItem[] };
+    return { order, items: results.map(mapOrderItem) };
   });
 
 /* ---------------- Coupons, newsletter, visits ---------------- */
@@ -256,18 +282,8 @@ export const trackOrder = createServerFn({ method: "POST" })
 export const validateCoupon = createServerFn({ method: "POST" })
   .inputValidator((input: { code: string; subtotal: number }) => input)
   .handler(async ({ data }): Promise<{ valid: boolean; discount: number; message: string }> => {
-    const supabase = createPublicSupabase();
-    const code = data.code.trim().toUpperCase();
-    if (!code) return { valid: false, discount: 0, message: "Enter a code." };
-
-    const { data: verdict, error } = await supabase.rpc("validate_coupon", {
-      _code: code,
-      _subtotal: data.subtotal,
-    });
-    if (error) throw new Error(error.message);
-    const v = (verdict ?? [])[0];
-    if (!v) return { valid: false, discount: 0, message: "This code isn't valid." };
-    return { valid: v.valid, discount: v.discount, message: v.message };
+    const db = await getDb();
+    return checkCoupon(db, data.code, data.subtotal);
   });
 
 export const subscribeNewsletter = createServerFn({ method: "POST" })
@@ -277,17 +293,22 @@ export const subscribeNewsletter = createServerFn({ method: "POST" })
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
       throw new Error("Please enter a valid email address.");
     }
-    const admin = await getAdmin();
-    const { error } = await admin
-      .from("newsletter_subscribers")
-      .upsert({ email }, { onConflict: "email" });
-    if (error) throw new Error(error.message);
+    const db = await getDb();
+    await db
+      .prepare(
+        "INSERT INTO newsletter_subscribers (id, email, created_at) VALUES (?, ?, ?) ON CONFLICT(email) DO NOTHING",
+      )
+      .bind(newId(), email, nowIso())
+      .run();
     return { ok: true };
   });
 
 export const trackVisit = createServerFn({ method: "POST" }).handler(async () => {
-  const admin = await getAdmin();
-  const { error } = await admin.rpc("increment_visits");
-  if (error) throw new Error(error.message);
+  const db = await getDb();
+  await db
+    .prepare(
+      "INSERT INTO visits (day, count) VALUES (date('now'), 1) ON CONFLICT(day) DO UPDATE SET count = count + 1",
+    )
+    .run();
   return { ok: true };
 });

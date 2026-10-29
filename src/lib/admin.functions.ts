@@ -1,19 +1,35 @@
 import { createServerFn } from "@tanstack/react-start";
-import { createHash, randomUUID, timingSafeEqual } from "node:crypto";
 import type { Coupon, Order, OrderItem, Product } from "./types";
-import { createPublicSupabase, getAdmin } from "./supabase-public";
+import {
+  getDb,
+  getEnv,
+  getImagesBucket,
+  mapCoupon,
+  mapOrder,
+  mapOrderItem,
+  mapProduct,
+  newId,
+  nowIso,
+} from "./db";
 
 /* ---------------- Admin access ---------------- */
 
-function assertAdmin(password: unknown): void {
-  const expected = process.env["ADMIN_PASSWORD"];
+async function sha256(value: string): Promise<Uint8Array> {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
+  return new Uint8Array(digest);
+}
+
+async function assertAdmin(password: unknown): Promise<void> {
+  const env = await getEnv();
+  const expected = env.ADMIN_PASSWORD;
   if (!expected || typeof password !== "string") {
     throw new Error("Unauthorized. Please sign in again.");
   }
-  // Hash both sides to equal-length digests before timingSafeEqual.
-  const a = createHash("sha256").update(password, "utf8").digest();
-  const b = createHash("sha256").update(expected, "utf8").digest();
-  if (!timingSafeEqual(a, b)) {
+  // Hash both sides to equal-length digests, then compare without early exit.
+  const [a, b] = await Promise.all([sha256(password), sha256(expected)]);
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) diff |= (a[i] ?? 0) ^ (b[i] ?? 0);
+  if (diff !== 0) {
     throw new Error("Unauthorized. Please sign in again.");
   }
 }
@@ -23,7 +39,7 @@ const P = (input: { adminPassword: string }) => input;
 export const adminLogin = createServerFn({ method: "POST" })
   .inputValidator(P)
   .handler(async ({ data }) => {
-    assertAdmin(data.adminPassword);
+    await assertAdmin(data.adminPassword);
     return { ok: true };
   });
 
@@ -44,26 +60,47 @@ export interface AdminOverview {
 export const adminOverview = createServerFn({ method: "POST" })
   .inputValidator(P)
   .handler(async ({ data }): Promise<AdminOverview> => {
-    assertAdmin(data.adminPassword);
-    const admin = await getAdmin();
+    await assertAdmin(data.adminPassword);
+    const db = await getDb();
 
     const [ordersRes, itemsRes, productsRes, visitsRes] = await Promise.all([
-      admin.from("orders").select("order_id,total_amount,shipping_cost,status,created_at,mobile,customer_name"),
-      admin.from("order_items").select("price,quantity,product_id"),
-      createPublicSupabase().from("products").select("id,category"),
-      admin.from("visits").select("count"),
+      db
+        .prepare(
+          "SELECT order_id, total_amount, shipping_cost, status, created_at, mobile, customer_name FROM orders",
+        )
+        .all(),
+      db.prepare("SELECT price, quantity, product_id FROM order_items").all(),
+      db.prepare("SELECT id, category FROM products").all(),
+      db.prepare("SELECT count FROM visits").all(),
     ]);
-    if (ordersRes.error) throw new Error(ordersRes.error.message);
 
-    type O = Pick<Order, "order_id" | "total_amount" | "shipping_cost" | "status" | "created_at" | "mobile" | "customer_name">;
-    const orders = (ordersRes.data ?? []) as O[];
-    const items = (itemsRes.data ?? []) as Pick<OrderItem, "price" | "quantity" | "product_id">[];
-    const products = (productsRes.data ?? []) as Pick<Product, "id" | "category">[];
+    type O = Pick<
+      Order,
+      "order_id" | "total_amount" | "shipping_cost" | "status" | "created_at" | "mobile" | "customer_name"
+    >;
+    const orders = ordersRes.results.map((r) => ({
+      order_id: String(r["order_id"]),
+      total_amount: Number(r["total_amount"]),
+      shipping_cost: Number(r["shipping_cost"]),
+      status: String(r["status"]) as Order["status"],
+      created_at: String(r["created_at"]),
+      mobile: String(r["mobile"]),
+      customer_name: String(r["customer_name"]),
+    })) as O[];
+    const items = itemsRes.results.map((r) => ({
+      price: Number(r["price"]),
+      quantity: Number(r["quantity"]),
+      product_id: r["product_id"] == null ? null : String(r["product_id"]),
+    })) as Pick<OrderItem, "price" | "quantity" | "product_id">[];
+    const products = productsRes.results.map((r) => ({
+      id: String(r["id"]),
+      category: String(r["category"]),
+    })) as Pick<Product, "id" | "category">[];
 
     const valid = orders.filter((o) => o.status !== "cancelled");
     const revenue = valid.reduce((n, o) => n + o.total_amount, 0);
     const netProfit = valid.reduce((n, o) => n + (o.total_amount - o.shipping_cost), 0);
-    const visitors = (visitsRes.data ?? []).reduce((n, v) => n + (v.count ?? 0), 0);
+    const visitors = visitsRes.results.reduce((n, v) => n + Number(v["count"] ?? 0), 0);
 
     const statusCounts: Record<string, number> = {
       pending: 0,
@@ -135,36 +172,45 @@ export interface AdminOrderWithItems extends Order {
   items: OrderItem[];
 }
 
+const ORDER_STATUS_VALUES = ["pending", "processing", "on_the_way", "delivered", "cancelled"];
+
 export const adminListOrders = createServerFn({ method: "POST" })
   .inputValidator((input: { adminPassword: string; status?: string | undefined }) => input)
   .handler(async ({ data }): Promise<AdminOrderWithItems[]> => {
-    assertAdmin(data.adminPassword);
-    const admin = await getAdmin();
-    let q = admin.from("orders").select("*").order("created_at", { ascending: false });
-    if (data.status) q = q.eq("status", data.status);
-    const { data: orders, error } = await q;
-    if (error) throw new Error(error.message);
-    const list = (orders ?? []) as Order[];
+    await assertAdmin(data.adminPassword);
+    const db = await getDb();
+    const status = data.status || null;
+
+    const ordersStmt = status
+      ? db.prepare("SELECT * FROM orders WHERE status = ? ORDER BY created_at DESC").bind(status)
+      : db.prepare("SELECT * FROM orders ORDER BY created_at DESC");
+    const itemsStmt = status
+      ? db
+          .prepare(
+            "SELECT oi.* FROM order_items oi JOIN orders o ON o.id = oi.order_id WHERE o.status = ?",
+          )
+          .bind(status)
+      : db.prepare("SELECT * FROM order_items");
+
+    const [ordersRes, itemsRes] = await Promise.all([ordersStmt.all(), itemsStmt.all()]);
+    const list = ordersRes.results.map(mapOrder);
     if (!list.length) return [];
-    const { data: items, error: itemsErr } = await admin
-      .from("order_items")
-      .select("*")
-      .in("order_id", list.map((o) => o.id));
-    if (itemsErr) throw new Error(itemsErr.message);
-    const all = (items ?? []) as OrderItem[];
+    const all = itemsRes.results.map(mapOrderItem);
     return list.map((o) => ({ ...o, items: all.filter((i) => i.order_id === o.id) }));
   });
 
 export const adminUpdateOrderStatus = createServerFn({ method: "POST" })
   .inputValidator((input: { adminPassword: string; id: string; status: string }) => input)
   .handler(async ({ data }) => {
-    assertAdmin(data.adminPassword);
-    const admin = await getAdmin();
-    const { error } = await admin
-      .from("orders")
-      .update({ status: data.status })
-      .eq("id", data.id);
-    if (error) throw new Error(error.message);
+    await assertAdmin(data.adminPassword);
+    if (!ORDER_STATUS_VALUES.includes(data.status)) {
+      throw new Error("Unknown order status.");
+    }
+    const db = await getDb();
+    await db
+      .prepare("UPDATE orders SET status = ?, updated_at = ? WHERE id = ?")
+      .bind(data.status, nowIso(), data.id)
+      .run();
     return { ok: true };
   });
 
@@ -199,8 +245,8 @@ function slugify(name: string): string {
 export const adminSaveProduct = createServerFn({ method: "POST" })
   .inputValidator((input: { adminPassword: string; product: AdminProductInput }) => input)
   .handler(async ({ data }) => {
-    assertAdmin(data.adminPassword);
-    const admin = await getAdmin();
+    await assertAdmin(data.adminPassword);
+    const db = await getDb();
     const p = data.product;
     const values = {
       name: p.name.trim(),
@@ -210,45 +256,106 @@ export const adminSaveProduct = createServerFn({ method: "POST" })
       price: Math.round(p.price),
       compare_price: p.compare_price ? Math.round(p.compare_price) : null,
       stock: Math.max(0, Math.round(p.stock)),
-      sizes: p.sizes,
-      colors: p.colors,
+      sizes: JSON.stringify(p.sizes),
+      colors: JSON.stringify(p.colors),
       image: p.image,
-      gallery: p.gallery.length ? p.gallery : [p.image],
-      is_featured: p.is_featured,
-      is_flash_sale: p.is_flash_sale,
-      flash_sale_price: p.is_flash_sale && p.flash_sale_price ? Math.round(p.flash_sale_price) : null,
+      gallery: JSON.stringify(p.gallery.length ? p.gallery : [p.image]),
+      is_featured: p.is_featured ? 1 : 0,
+      is_flash_sale: p.is_flash_sale ? 1 : 0,
+      flash_sale_price:
+        p.is_flash_sale && p.flash_sale_price ? Math.round(p.flash_sale_price) : null,
       flash_ends_at: p.is_flash_sale ? p.flash_ends_at : null,
     };
-    if (p.id) {
-      const { error } = await admin.from("products").update(values).eq("id", p.id);
-      if (error) throw new Error(error.message);
+
+    try {
+      if (p.id) {
+        await db
+          .prepare(
+            `UPDATE products SET
+               name = ?, slug = ?, description = ?, category = ?, price = ?, compare_price = ?,
+               stock = ?, sizes = ?, colors = ?, image = ?, gallery = ?, is_featured = ?,
+               is_flash_sale = ?, flash_sale_price = ?, flash_ends_at = ?, updated_at = ?
+             WHERE id = ?`,
+          )
+          .bind(
+            values.name,
+            values.slug,
+            values.description,
+            values.category,
+            values.price,
+            values.compare_price,
+            values.stock,
+            values.sizes,
+            values.colors,
+            values.image,
+            values.gallery,
+            values.is_featured,
+            values.is_flash_sale,
+            values.flash_sale_price,
+            values.flash_ends_at,
+            nowIso(),
+            p.id,
+          )
+          .run();
+        return { ok: true };
+      }
+      const stamp = nowIso();
+      await db
+        .prepare(
+          `INSERT INTO products
+             (id, name, slug, description, category, price, compare_price, stock, sizes, colors,
+              image, gallery, is_featured, is_flash_sale, flash_sale_price, flash_ends_at,
+              created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        )
+        .bind(
+          newId(),
+          values.name,
+          values.slug,
+          values.description,
+          values.category,
+          values.price,
+          values.compare_price,
+          values.stock,
+          values.sizes,
+          values.colors,
+          values.image,
+          values.gallery,
+          values.is_featured,
+          values.is_flash_sale,
+          values.flash_sale_price,
+          values.flash_ends_at,
+          stamp,
+          stamp,
+        )
+        .run();
       return { ok: true };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      if (/UNIQUE constraint failed: products\.slug/i.test(message)) {
+        throw new Error("Another product already uses that slug.");
+      }
+      throw err;
     }
-    const { error } = await admin.from("products").insert(values);
-    if (error) throw new Error(error.message);
-    return { ok: true };
   });
 
 export const adminProductsList = createServerFn({ method: "POST" })
   .inputValidator(P)
   .handler(async ({ data }): Promise<Product[]> => {
-    assertAdmin(data.adminPassword);
-    const admin = await getAdmin();
-    const { data: products, error } = await admin
-      .from("products")
-      .select("*")
-      .order("created_at", { ascending: true });
-    if (error) throw new Error(error.message);
-    return (products ?? []) as unknown as Product[];
+    await assertAdmin(data.adminPassword);
+    const db = await getDb();
+    const { results } = await db
+      .prepare("SELECT * FROM products ORDER BY created_at ASC, rowid ASC")
+      .all();
+    return results.map(mapProduct);
   });
 
 export const adminDeleteProduct = createServerFn({ method: "POST" })
   .inputValidator((input: { adminPassword: string; id: string }) => input)
   .handler(async ({ data }) => {
-    assertAdmin(data.adminPassword);
-    const admin = await getAdmin();
-    const { error } = await admin.from("products").delete().eq("id", data.id);
-    if (error) throw new Error(error.message);
+    await assertAdmin(data.adminPassword);
+    const db = await getDb();
+    await db.prepare("DELETE FROM products WHERE id = ?").bind(data.id).run();
     return { ok: true };
   });
 
@@ -265,14 +372,20 @@ export interface AdminCustomer {
 export const adminListCustomers = createServerFn({ method: "POST" })
   .inputValidator(P)
   .handler(async ({ data }): Promise<AdminCustomer[]> => {
-    assertAdmin(data.adminPassword);
-    const admin = await getAdmin();
-    const { data: orders, error } = await admin
-      .from("orders")
-      .select("mobile, customer_name, total_amount, status, created_at")
-      .order("created_at", { ascending: false });
-    if (error) throw new Error(error.message);
-    const list = (orders ?? []) as Pick<Order, "mobile" | "customer_name" | "total_amount" | "status" | "created_at">[];
+    await assertAdmin(data.adminPassword);
+    const db = await getDb();
+    const { results } = await db
+      .prepare(
+        "SELECT mobile, customer_name, total_amount, status, created_at FROM orders ORDER BY created_at DESC",
+      )
+      .all();
+    const list = results.map((r) => ({
+      mobile: String(r["mobile"]),
+      customer_name: String(r["customer_name"]),
+      total_amount: Number(r["total_amount"]),
+      status: String(r["status"]),
+      created_at: String(r["created_at"]),
+    }));
     const map = new Map<string, AdminCustomer>();
     for (const o of list) {
       const existing = map.get(o.mobile);
@@ -300,14 +413,10 @@ export const adminListCustomers = createServerFn({ method: "POST" })
 export const adminListCoupons = createServerFn({ method: "POST" })
   .inputValidator(P)
   .handler(async ({ data }): Promise<Coupon[]> => {
-    assertAdmin(data.adminPassword);
-    const admin = await getAdmin();
-    const { data: coupons, error } = await admin
-      .from("coupons")
-      .select("*")
-      .order("created_at", { ascending: false });
-    if (error) throw new Error(error.message);
-    return (coupons ?? []) as Coupon[];
+    await assertAdmin(data.adminPassword);
+    const db = await getDb();
+    const { results } = await db.prepare("SELECT * FROM coupons ORDER BY created_at DESC").all();
+    return results.map(mapCoupon);
   });
 
 export const adminSaveCoupon = createServerFn({ method: "POST" })
@@ -326,35 +435,44 @@ export const adminSaveCoupon = createServerFn({ method: "POST" })
     }) => input,
   )
   .handler(async ({ data }) => {
-    assertAdmin(data.adminPassword);
-    const admin = await getAdmin();
+    await assertAdmin(data.adminPassword);
+    const db = await getDb();
     const c = data.coupon;
-    const values = {
-      code: c.code.trim().toUpperCase(),
-      type: c.type,
-      value: Math.round(c.value),
-      min_order: Math.max(0, Math.round(c.min_order)),
-      active: c.active,
-      expires_at: c.expires_at || null,
-    };
-    const { error } = await admin
-      .from("coupons")
-      .upsert(values, { onConflict: "code" });
-    if (error) throw new Error(error.message);
+    await db
+      .prepare(
+        `INSERT INTO coupons (id, code, type, value, min_order, active, expires_at, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(code) DO UPDATE SET
+           type = excluded.type,
+           value = excluded.value,
+           min_order = excluded.min_order,
+           active = excluded.active,
+           expires_at = excluded.expires_at`,
+      )
+      .bind(
+        newId(),
+        c.code.trim().toUpperCase(),
+        c.type,
+        Math.round(c.value),
+        Math.max(0, Math.round(c.min_order)),
+        c.active ? 1 : 0,
+        c.expires_at || null,
+        nowIso(),
+      )
+      .run();
     return { ok: true };
   });
 
 export const adminDeleteCoupon = createServerFn({ method: "POST" })
   .inputValidator((input: { adminPassword: string; id: string }) => input)
   .handler(async ({ data }) => {
-    assertAdmin(data.adminPassword);
-    const admin = await getAdmin();
-    const { error } = await admin.from("coupons").delete().eq("id", data.id);
-    if (error) throw new Error(error.message);
+    await assertAdmin(data.adminPassword);
+    const db = await getDb();
+    await db.prepare("DELETE FROM coupons WHERE id = ?").bind(data.id).run();
     return { ok: true };
   });
 
-/* ---------------- Image uploads ---------------- */
+/* ---------------- Image uploads (Cloudflare R2) ---------------- */
 
 const IMAGE_EXTENSIONS: Record<string, string> = {
   "image/jpeg": "jpg",
@@ -366,6 +484,13 @@ const IMAGE_EXTENSIONS: Record<string, string> = {
 
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
 
+function base64ToBytes(b64: string): Uint8Array {
+  const binary = atob(b64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return bytes;
+}
+
 export const adminUploadImage = createServerFn({ method: "POST" })
   .inputValidator(
     (input: {
@@ -376,24 +501,21 @@ export const adminUploadImage = createServerFn({ method: "POST" })
     }) => input,
   )
   .handler(async ({ data }) => {
-    assertAdmin(data.adminPassword);
+    await assertAdmin(data.adminPassword);
     const ext = IMAGE_EXTENSIONS[data.contentType];
     if (!ext) {
       throw new Error("Unsupported image type. Use JPG, PNG, WebP, GIF or AVIF.");
     }
-    const bytes = Buffer.from(data.dataBase64, "base64");
+    const bytes = base64ToBytes(data.dataBase64);
     if (!bytes.length) throw new Error("The selected file is empty.");
     if (bytes.length > MAX_IMAGE_BYTES) {
       throw new Error("That image is too large. The maximum size is 10 MB.");
     }
     // Random server-side name — never trust the client's filename.
-    const path = `${randomUUID()}.${ext}`;
-    const admin = await getAdmin();
-    const { error } = await admin.storage.from("product-images").upload(
-      path,
-      new Blob([new Uint8Array(bytes)], { type: data.contentType }),
-      { contentType: data.contentType, cacheControl: "31536000", upsert: false },
-    );
-    if (error) throw new Error(error.message);
+    const path = `${crypto.randomUUID()}.${ext}`;
+    const bucket = await getImagesBucket();
+    await bucket.put(path, bytes, {
+      httpMetadata: { contentType: data.contentType, cacheControl: "public, max-age=31536000, immutable" },
+    });
     return { path, url: `/api/public/product-images/${path}` };
   });
