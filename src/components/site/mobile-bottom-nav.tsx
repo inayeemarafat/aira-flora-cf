@@ -63,7 +63,7 @@ export function MobileBottomNav() {
         <div className="flex">
           <Item label="Home" icon={<Home className={ic} />} active={path === "/"} onClick={() => navigate({ to: "/" })} />
           <Item label="Categories" icon={<LayoutGrid className={ic} />} active={catOpen || path === "/shop"} onClick={() => setCatOpen(true)} />
-          <Item label="Track" icon={<Truck className={ic} />} active={path === "/track"} onClick={() => navigate({ to: "/track" })} />
+          <Item label="Track Order" icon={<Truck className={ic} />} active={path === "/track"} onClick={() => navigate({ to: "/track" })} />
           <Item label="Wishlist" icon={<Heart className={ic} />} active={wishlist.isOpen} badge={wishlist.count} onClick={wishlist.open} />
           <Item label="Cart" icon={<ShoppingBag className={ic} />} badge={count} onClick={openCart} />
         </div>
